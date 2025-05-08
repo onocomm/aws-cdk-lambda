@@ -1,8 +1,8 @@
 {
-  "name": "aws-cdk-cognito",
+  "name": "aws-cdk-lambda",
   "version": "0.1.0",
   "bin": {
-    "cdk-test-ec2": "bin/cdk-cognito.js"
+    "cdk-test-ec2": "bin/cdk-lambda.js"
   },
   "scripts": {
     "build": "tsc",

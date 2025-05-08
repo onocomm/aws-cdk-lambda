@@ -1,44 +1,38 @@
-# AWS CDK Cognito サンプルプロジェクト
+# AWS CDK Lambda サンプルプロジェクト
 
-このリポジトリは、AWS CDKを使用してAmazon Cognitoのユーザープールとアイデンティティプールを設定する方法を示すサンプルプロジェクトです。認証・認可基盤をインフラストラクチャー・アズ・コードで管理する例を含んでいます。
+このリポジトリは、AWS CDKを使用してAWS Lambda関数をデプロイする方法を示すサンプルプロジェクトです。サーバーレス関数をインフラストラクチャー・アズ・コードで管理する例を含んでいます。
 
 ## 概要
 
 このプロジェクトでは、以下のリソースと設定を AWS CDK を使って定義しています：
 
-- Cognito ユーザープールの作成と設定
-  - ユーザープール名の指定
-  - メールアドレスによるサインイン
-  - パスワードポリシーの設定
-  - Amazon SES を使用したメール送信設定
-  - リソース削除ポリシーの設定
-- ユーザープールクライアントの設定
-  - クライアント名の指定
-  - 各種認証フローの有効化（SRP、管理者認証、カスタム認証）
-  - ユーザー存在エラーの防止（セキュリティ対策）
-- Cognito アイデンティティプールの作成
-  - アイデンティティプール名の指定
-  - ユーザープールをIDP（Identity Provider）として設定
-- IAM ロールの設定
+- Lambda関数の作成と設定
+  - 関数名の指定
+  - Node.js 22ランタイムの使用
+  - メモリサイズとタイムアウトの設定
+  - ハンドラ関数の指定
+  - 関数コードの外部ファイルからの読み込み
+- IAMロールの設定
   - カスタムロール名の指定
-  - 認証済みユーザー用のロールと権限設定
+  - Lambda関数用の基本的な実行権限設定
+- 出力値の設定
+  - Lambda関数名とARNの出力
 
 ## 前提条件
 
 このプロジェクトを使用するためには、以下が必要です：
 
 - AWS アカウント
-- Node.js (バージョン 14.x 以上)
+- Node.js (バージョン 16.x 以上)
 - AWS CDK CLI (バージョン 2.x)
 - AWS CLI（設定済み）
-- Amazon SES（設定済み、メール送信元として使用）
 
 ## インストール方法
 
 ```bash
 # リポジトリをクローン
 git clone <リポジトリURL>
-cd aws-cdk-cognito
+cd aws-cdk-lambda
 
 # 依存関係をインストール
 npm install
@@ -64,140 +58,113 @@ npx cdk synth
 npx cdk deploy
 ```
 
-> **注意**: 実際にデプロイすると、Cognitoリソースが作成され、AWS アカウントに課金が発生する可能性があります。
+> **注意**: 実際にデプロイすると、Lambdaリソースが作成され、AWS アカウントに課金が発生する可能性があります。
 
 ## 実装例の解説
 
 ### 基本設定の変数化
 
 ```typescript
-const UserPoolName = 'example system';
-const UserPoolClientName = 'example system';
-const IdentityPoolName = 'example system';
-const SESRegion = 'ap-northeast-1';
-const EmailAddress = 'no-reply@example.com';
-const EmailName = 'example system';
-const ConfigurationSetName = 'default';
-const RoleName = 'Cognito_exampleAuth_Role';
+// 設定パラメータ
+const functionName = 'sample-lambda-function';
+const roleName = 'sample-lambda-role';
 ```
 
-### ユーザープールの作成
+### IAMロールの作成
 
 ```typescript
-const userPool = new cognito.UserPool(this, 'UserPool', {
-  userPoolName: UserPoolName,
-  selfSignUpEnabled: true,
-  signInAliases: {
-    email: true,
-  },
-  passwordPolicy: {
-    minLength: 8,
-    requireDigits: true,
-    requireLowercase: false,
-    requireUppercase: false,
-    requireSymbols: false,
-    tempPasswordValidity: Duration.days(7),
-  },
-  email: cognito.UserPoolEmail.withSES({
-    sesRegion: SESRegion,
-    fromEmail: EmailAddress,
-    fromName: EmailName,
-    configurationSetName: ConfigurationSetName,
-  }),
-  removalPolicy: RemovalPolicy.DESTROY,
-});
-```
-
-### ユーザープールクライアントの設定
-
-```typescript
-const userPoolClient = new cognito.UserPoolClient(this, 'UserPoolClient', {
-  userPool,
-  userPoolClientName: UserPoolClientName,
-  preventUserExistenceErrors: true, // ユーザー存在エラーの防止を有効化
-  authFlows: {
-    userSrp: true,                // SRP認証
-    adminUserPassword: true,      // 管理者認証
-    custom: true,                 // カスタム認証
-    userPassword: false,          // パスワード認証（無効）
-  },
-  refreshTokenValidity: Duration.days(30), // 更新トークンの有効期間
-});
-```
-
-### アイデンティティプールの作成
-
-```typescript
-const identityPool = new cognito.CfnIdentityPool(this, 'IdentityPool', {
-  identityPoolName: IdentityPoolName,
-  cognitoIdentityProviders: [
-    {
-      clientId: userPoolClient.userPoolClientId,
-      providerName: `cognito-idp.${this.region}.amazonaws.com/${userPool.userPoolId}`,
-    },
-  ],
-  allowUnauthenticatedIdentities: false,
-});
-```
-
-### 認証済みユーザー用IAMロールの設定
-
-```typescript
-const authenticatedRole = new iam.Role(this, 'AuthenticatedRole', {
-  roleName: RoleName, // 変数からロール名を指定
-  assumedBy: new iam.FederatedPrincipal(
-    'cognito-identity.amazonaws.com',
-    {
-      StringEquals: {
-        'cognito-identity.amazonaws.com:aud': identityPool.ref,
-      },
-      'ForAnyValue:StringLike': {
-        'cognito-identity.amazonaws.com:amr': 'authenticated',
-      },
-    },
-    'sts:AssumeRoleWithWebIdentity'
-  ),
+const lambdaRole = new iam.Role(this, 'LambdaRole', {
+  roleName: roleName,
+  assumedBy: new iam.ServicePrincipal('lambda.amazonaws.com'),
+  description: 'Role for sample Lambda function',
 });
 
-// ロールにポリシーをアタッチ
-authenticatedRole.addManagedPolicy(
-  iam.ManagedPolicy.fromAwsManagedPolicyName('AmazonS3ReadOnlyAccess')
+// 基本的なLambda実行ポリシーを追加（CloudWatchログの書き込み権限）
+lambdaRole.addManagedPolicy(
+  iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
 );
 ```
 
-### アイデンティティプールとIAMロールの関連付け
+### Lambda関数の作成
 
 ```typescript
-new cognito.CfnIdentityPoolRoleAttachment(this, 'IdentityPoolRoleAttachment', {
-  identityPoolId: identityPool.ref,
-  roles: {
-    authenticated: authenticatedRole.roleArn,
-  },
+const sampleFunction = new lambda.Function(this, 'SampleFunction', {
+  functionName: functionName,
+  runtime: lambda.Runtime.NODEJS_22_X,
+  handler: 'index.handler',
+  code: lambda.Code.fromAsset('lambda'),
+  role: lambdaRole,
+  timeout: Duration.minutes(5),
+  memorySize: 512,
+  description: 'Sample Lambda function created with CDK',
 });
 ```
 
-## セキュリティ機能
+### 出力値の設定
 
-### ユーザー存在エラーの防止
+```typescript
+new CfnOutput(this, 'LambdaFunctionName', {
+  value: sampleFunction.functionName,
+  description: 'Lambda Function Name',
+});
 
-`preventUserExistenceErrors: true` を設定することで、ユーザー列挙攻撃（ユーザー名の存在を調査する攻撃）を防止できます。この設定が有効な場合、ユーザーが存在しない場合でも一般的なエラーメッセージが返され、ユーザーの存在有無を隠匿します。
+new CfnOutput(this, 'LambdaFunctionArn', {
+  value: sampleFunction.functionArn,
+  description: 'Lambda Function ARN',
+});
+```
 
-### 削除ポリシー
+## Lambda関数コード
 
-`removalPolicy: RemovalPolicy.DESTROY` を設定することで、CDKスタックを削除する際にCognitoリソースも一緒に削除されます。本番環境では `RemovalPolicy.RETAIN` に変更することで、誤ってユーザーデータを失うことを防止できます。
+Lambda関数のコードは `lambda/index.mjs` ファイルに定義されています：
+
+```javascript
+export const handler = async (event) => {
+  console.log('Event received:', JSON.stringify(event, null, 2));
+  
+  return {
+    statusCode: 200,
+    body: JSON.stringify({
+      message: 'Hello World from Lambda!',
+      event: event
+    }),
+  };
+};
+```
+
+## セキュリティのベストプラクティス
+
+### 最小権限の原則
+
+Lambda関数には、必要最小限の権限のみを付与することが重要です。このサンプルでは基本的な実行ロールのみを付与していますが、実際のアプリケーションでは必要な追加権限（S3、DynamoDB、SNSなど）を慎重に追加してください。
+
+### 環境変数の使用
+
+機密情報やデプロイ環境ごとに変更が必要な値は、ハードコーディングせずに環境変数として設定することをお勧めします。
+
+```typescript
+// 環境変数の設定例
+const sampleFunction = new lambda.Function(this, 'SampleFunction', {
+  // ... 他の設定 ...
+  environment: {
+    STAGE: 'dev',
+    API_ENDPOINT: 'https://api.example.com',
+  },
+});
+```
 
 ## カスタマイズ方法
 
 実際の環境で使用する場合は、以下の点を変更してください：
 
 1. 変数セクションの値を実際の環境に合わせて変更
-   - UserPoolName, UserPoolClientName, IdentityPoolName
-   - EmailAddress, EmailName
-   - RoleName
-2. パスワードポリシーをセキュリティ要件に合わせて変更
-3. 本番環境では `removalPolicy` を `RemovalPolicy.RETAIN` に設定
-4. IAMロールとポリシーを実際のアプリケーション要件に合わせて変更
-5. 必要に応じてソーシャルIDプロバイダーを追加
+   - functionName, roleName
+2. Lambda関数の設定を要件に合わせて変更
+   - メモリサイズ（512MBは一般的な開始点）
+   - タイムアウト（5分は長め、多くの関数はより短い時間が適切）
+   - ランタイム（Node.js以外を使用する場合）
+3. IAMロールとポリシーを実際のアプリケーション要件に合わせて変更
+4. Lambda関数のコードを実際のビジネスロジックに置き換え
 
 ## クリーンアップ
 
@@ -210,9 +177,9 @@ npx cdk destroy
 ## 参考リソース
 
 - [AWS CDK ドキュメント](https://docs.aws.amazon.com/cdk/latest/guide/home.html)
-- [Amazon Cognito ドキュメント](https://docs.aws.amazon.com/cognito/latest/developerguide/what-is-amazon-cognito.html)
-- [AWS CDK API リファレンス - Cognito](https://docs.aws.amazon.com/cdk/api/latest/docs/aws-cognito-readme.html)
-- [Amazon SES ドキュメント](https://docs.aws.amazon.com/ses/latest/dg/Welcome.html)
+- [AWS Lambda ドキュメント](https://docs.aws.amazon.com/lambda/latest/dg/welcome.html)
+- [AWS CDK API リファレンス - Lambda](https://docs.aws.amazon.com/cdk/api/latest/docs/aws-lambda-readme.html)
+- [Lambda関数のベストプラクティス](https://docs.aws.amazon.com/lambda/latest/dg/best-practices.html)
 
 ## ライセンス
 
