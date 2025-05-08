@@ -23,6 +23,19 @@ export class CdkLambdaStack extends Stack {
       iam.ManagedPolicy.fromAwsManagedPolicyName('service-role/AWSLambdaBasicExecutionRole')
     );
 
+    // インラインポリシーの追加
+    lambdaRole.attachInlinePolicy(
+      new iam.Policy(this, 'stsAssumeRole', {
+        statements: [
+          new iam.PolicyStatement({
+            effect: iam.Effect.ALLOW,
+            actions: ['sts:AssumeRole'],
+            resources: ['arn:aws:iam::xxxx:role/DynamoDBPutItem']
+          })
+        ]
+      })
+    );
+
     // Lambda関数の作成
     const sampleFunction = new lambda.Function(this, 'SampleFunction', {
       functionName: functionName,
@@ -32,6 +45,8 @@ export class CdkLambdaStack extends Stack {
       role: lambdaRole,
       timeout: Duration.minutes(5),
       memorySize: 512,
+      // レイヤーを設定
+      //layers: [lambda.LayerVersion.fromLayerVersionArn(this, 'NodemailerLayer', 'arn:aws:lambda:ap-northeast-1:895738667535:layer:nodemailer:1')], 
       description: 'Sample Lambda function created with CDK',
     });
 
